@@ -4,7 +4,7 @@
 //
 // A node:   { lines: [text...], choices: [{ text, next?: nodeId, fx?: effects }] }
 //   next missing = the conversation ends after this choice.
-// Effects:  { rel: {npcId: n}, flag: 'name', decision: ['key','value'] }
+// Effects:  { rel: {npcId: n}, flag: 'name', decision: ['key','value'], cash: pence (+ given to you, - you pay) }
 //   Effects apply ONCE per choice (remembered in story.flags), so talking again can't farm XP.
 // An NPC has an `entry(story)` that picks the first node, so they remember you.
 import { touchStory } from './story.mjs'
@@ -140,17 +140,59 @@ export const NPCS = {
     },
   },
 
+  // Mission 2 (v53): the parts dealer Leon sends you to. Haggling decides what you can hand back.
+  kenny: {
+    id: 'kenny', name: 'Kenny Doyle', role: 'Parts dealer', gender: 'male',
+    skin: '#E2BDA4', hair: '#7A7A7A', outfit: '#4A3B2A',
+    x: 445.2, z: 95, ry: 0.79,
+    entry: (s) => (!s.flags['part:asked'] ? 'closed' : !s.flags['part:bought'] ? 'sell' : 'done'),
+    nodes: {
+      closed: {
+        lines: ["We're shut. Unless you're buying, in which case we're open."],
+        choices: [{ text: 'Just looking.' }],
+      },
+      sell: {
+        lines: ["You're Leon's lad? He still owes me for the last two.", 'Clutch kit for a Corsa. Hundred and twenty. Cash.'],
+        choices: [
+          { text: 'Fine. A hundred and twenty.', next: 'sold', fx: { flag: 'part:bought', decision: ['partPrice', '120'], cash: -12000 } },
+          { text: "Leon's a regular. Ninety, and he keeps coming back.", next: 'ninety' },
+          { text: "Seventy. That's off a scrapper, I can see the rust.", next: 'seventy' },
+        ],
+      },
+      ninety: {
+        lines: ["A regular who doesn't pay. Lovely.", '...Go on then. Ninety.'],
+        choices: [{ text: 'Deal.', next: 'sold', fx: { flag: 'part:bought', decision: ['partPrice', '90'], cash: -9000, rel: { kenny: 1 } } }],
+      },
+      seventy: {
+        lines: ['You what?', '...Seventy. And you tell nobody where it came from.'],
+        choices: [
+          { text: "Wouldn't dream of it.", next: 'sold', fx: { flag: 'part:bought', decision: ['partPrice', '70'], cash: -7000, rel: { kenny: -2 } } },
+          { text: 'Alright, ninety. Call it goodwill.', next: 'sold', fx: { flag: 'part:bought', decision: ['partPrice', '90'], cash: -9000, rel: { kenny: 2 } } },
+        ],
+      },
+      sold: {
+        lines: ["There. Tell Leon I want paying for the last two. And drive careful, I know that hatchback's history."],
+        choices: [{ text: 'Cheers, Kenny.' }],
+      },
+      done: {
+        lines: ['Got your part. Go on, before I change my mind.'],
+        choices: [{ text: 'Going.' }],
+      },
+    },
+  },
   leon: {
     id: 'leon', name: 'Leon Campbell', role: 'Mechanic and hustler', gender: 'male',
     skin: '#8A5A3C', hair: '#171514', outfit: '#30343A',
     x: 101, z: 79.5, ry: -2.2,
+    // Act 1 as in the story bible (v53): the sofa (mission 1), then the clutch kit (mission 2, decision 1).
+    // The old lock-up nodes (favour, tonight, alone, blamed) wait to be reworked into mission 6.
     entry: (s) => {
       if (!s.flags['met:leon']) return 'hello'
-      if (s.flags['money:missing']) return 'blamed'
-      if (s.decisions.favour === 'accepted') return 'tonight'
-      if (s.decisions.favour === 'declined') return 'alone'
-      if (s.flags['met:aisha']) return 'favour'
-      return 'again'
+      if (!s.flags['lead:garage']) return 'again'
+      if (!s.flags['part:asked']) return 'part'
+      if (!s.flags['part:bought']) return 'partWaiting'
+      if (!s.flags['leon:paid']) return `back${s.decisions.partPrice ?? '120'}`
+      return s.decisions.helpedLeon === 'yes' ? 'afterHelped' : 'afterNot'
     },
     nodes: {
       hello: {
@@ -186,15 +228,72 @@ export const NPCS = {
         ],
       },
       job: {
-        lines: ["Aisha runs the café up the road. Always short-handed. Tell her I sent you, she'll pretend she's not pleased.", 'Get a feel for the place. I might need you for something later.'],
-        choices: [{ text: "I'll go and see her.", fx: { flag: 'lead:cafe' } }],
+        lines: ['Get your head down tonight. Tomorrow I need you for something.', 'Garage stuff. Nothing dodgy. Mostly.'],
+        choices: [{ text: 'Night, Leon.', fx: { flag: 'lead:garage' } }],
       },
       again: {
-        lines: ['Still alive? Go and see Aisha. The café, up the road.'],
+        lines: ["Still up? Sofa. Sleep. I'll need you in the morning."],
         choices: [
-          { text: 'On my way.' },
+          { text: 'Night, Leon.', fx: { flag: 'lead:garage' } },
           { text: 'Tell me about this Danso.', next: 'tired' },
         ],
+      },
+      // ---- Mission 2: One More Favour ----
+      part: {
+        lines: [
+          "Right. Don't laugh. My supplier's stopped giving me credit, and I've got a Corsa on the ramp with no clutch and a customer who wants it Friday.",
+          "Kenny's Motor Spares, Adderley Street. Clutch kit. Here's a hundred and twenty, it's all that's in the tin. Take the grey hatchback out front.",
+          "And Jordan? That hatchback isn't exactly... registered. Keep it clean. No police.",
+        ],
+        choices: [
+          { text: 'On it.', fx: { flag: 'part:asked', cash: 12000, rel: { leon: 1 } } },
+          { text: "A hundred and twenty for a clutch kit? You're being robbed.", next: 'robbed' },
+        ],
+      },
+      robbed: {
+        lines: ["Probably. Kenny charges what he thinks you'll pay. Talk him down if you can. Every quid helps."],
+        choices: [{ text: 'Leave it with me.', fx: { flag: 'part:asked', cash: 12000, rel: { leon: 2 } } }],
+      },
+      partWaiting: {
+        lines: ["Kenny's. Adderley Street. Clutch kit. Go on, the Corsa isn't fixing itself."],
+        choices: [{ text: 'Going.' }],
+      },
+      back120: {
+        lines: ['You got it! Go on then, what did he sting me for?'],
+        choices: [
+          { text: "Full whack. A hundred and twenty. He wouldn't budge.", next: 'afterPaid', fx: { flag: 'leon:paid', decision: ['helpedLeon', 'no'] } },
+          { text: 'Full price. And here, fifty quid towards the invoices.', next: 'thanks', fx: { flag: 'leon:paid', decision: ['helpedLeon', 'yes'], cash: -5000, rel: { leon: 6 } } },
+        ],
+      },
+      back90: {
+        lines: ['You got it! Go on then, what did he sting me for?'],
+        choices: [
+          { text: 'Ninety. Here’s your thirty back.', next: 'thanks', fx: { flag: 'leon:paid', decision: ['helpedLeon', 'yes'], cash: -3000, rel: { leon: 4 } } },
+          { text: "A hundred and twenty. He wouldn't budge.", next: 'afterPaid', fx: { flag: 'leon:paid', decision: ['helpedLeon', 'no'] } },
+        ],
+      },
+      back70: {
+        lines: ['You got it! Go on then, what did he sting me for?'],
+        choices: [
+          { text: 'Seventy. Here’s fifty back. Kenny was not happy.', next: 'thanks', fx: { flag: 'leon:paid', decision: ['helpedLeon', 'yes'], cash: -5000, rel: { leon: 5 } } },
+          { text: 'A hundred and twenty. Daylight robbery.', next: 'afterPaid', fx: { flag: 'leon:paid', decision: ['helpedLeon', 'no'] } },
+        ],
+      },
+      thanks: {
+        lines: ["...You're joking. That's this week's invoices covered.", "Don't tell anyone I nearly cried in my own garage. Owe you one, proper."],
+        choices: [{ text: 'You put a roof over my head. Call it even.' }],
+      },
+      afterPaid: {
+        lines: ["Kenny. Course he wouldn't. Right, cheers for running it over.", "I'll find the money somewhere. Always do."],
+        choices: [{ text: 'See you later.' }],
+      },
+      afterHelped: {
+        lines: ["Supplier's back on side. The Corsa's out Friday. You're alright, you."],
+        choices: [{ text: 'Told you I would be.' }],
+      },
+      afterNot: {
+        lines: ['Busy. Invoices. Don’t ask.'],
+        choices: [{ text: 'Right.' }],
       },
       favour: {
         lines: [
@@ -360,6 +459,7 @@ function applyEffects(story, npcId, nodeId, index, fx) {
   if (fx.flag) story.flags[fx.flag] = true
   if (fx.decision) story.decisions[fx.decision[0]] ??= fx.decision[1] // the first answer is the one that counts
   touchStory()
+  return fx.cash ?? 0
 }
 
 /**
@@ -371,9 +471,9 @@ export function choose(story, state, index) {
   const node = npc?.nodes[state.node]
   if (!node || !Number.isInteger(index) || index < 0 || index >= node.choices.length) return null
   const picked = node.choices[index]
-  applyEffects(story, state.npc, state.node, index, picked.fx)
-  if (!picked.next) return { end: true }
-  return { end: false, state: { npc: state.npc, node: picked.next } }
+  const cash = applyEffects(story, state.npc, state.node, index, picked.fx) ?? 0
+  if (!picked.next) return { end: true, cash }
+  return { end: false, state: { npc: state.npc, node: picked.next }, cash }
 }
 
 export const storySnapshot = (story) => ({

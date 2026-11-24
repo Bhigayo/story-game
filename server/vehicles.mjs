@@ -84,6 +84,26 @@ ANCHORS.forEach((anchor, i) => {
 
 export const vehicleById = (id) => VEHICLES.find((v) => v.id === id) ?? null
 
+/**
+ * A car a mission needs (v53), parked near `anchor` ({ x, z, h }). Called again (a retry), it's put back and
+ * repaired, unless someone is in it. A loaner: taking it isn't a crime.
+ */
+export function spawnCar(id, anchor, colour = '#5B6B7A') {
+  let car = vehicleById(id)
+  if (car?.driver) return car
+  const spot = freeSpot(anchor) ?? anchor
+  if (!car) {
+    car = { id, colour, owned: false, police: false, ai: false, mission: true, driver: null }
+    VEHICLES.push(car)
+  }
+  Object.assign(car, {
+    x: spot.x, z: spot.z, h: spot.h, home: { ...spot },
+    speed: 0, steer: 0, health: 100, wrecked: false, wreckHandled: false, spin: 0, stolen: false,
+    input: { throttle: 0, steer: 0, brake: false, at: 0 },
+  })
+  return car
+}
+
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n))
 
 /** Records what the driver is holding. Values are clamped, so a client can't ask for more than 1. */

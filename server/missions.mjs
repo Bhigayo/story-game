@@ -16,14 +16,17 @@
 //
 // A step (all take `text`, the objective shown on screen):
 //   goto     { at, r }          be within r metres (default 4) of a place, person or { x, z }; `car: true` = driving
-//   car      {}                 get in a car (that car becomes the mission car: wreck it and you fail)
+//   car      {}                 get in a car (that car becomes the mission car: wreck it and you fail). With
+//            { carId, spawn: { x, z, h }, colour, carName } the mission parks one for you and waits for that one
 //   drive    { at, r }          be in a car within r metres (default 7)
 //   talk     { npc, flag }      talk to someone until the conversation sets `flag` (default met:<npc>)
 //   flag     { flag, at }       a story flag gets set (by a conversation); `at` is just where the marker goes
 //   wait     { ms }             hold on for this long
 //   clear    {}                 lose the police (no wanted level)
 // Step options: checkpoint (a retry starts here), timer (ms to finish this step), stay ({ at, r, text }: leave
-// that circle and you fail), hint (a longer line shown once under the objective).
+// that circle and you fail), clean (true or a reason: get a wanted level and you fail), hint (a longer line
+// shown once under the objective).
+// Texts can have `if: { decision: value or [values] }` to arrive only when the story went that way.
 //
 // Places for `at`: a map place id ('shop'), a person ('leon'), or a point { x, z, name }.
 import { INTERACT_RADIUS, PLACES } from './config.mjs'
@@ -32,7 +35,7 @@ import { NPCS } from './npcs.mjs'
 const pounds = (n) => n * 100
 
 export const MISSIONS = [
-  // ---- Act 1: The Collision ----
+  // ---- Act 1: The Collision (story bible, v53) ----
   {
     id: 'a1m1', group: 'Act 1: The Collision', order: 0.1, title: 'No Fixed Address', hero: 'jordan',
     desc: "Off the coach with nothing. Leon's text says get something to eat, then find him at the garage yard.",
@@ -45,20 +48,34 @@ export const MISSIONS = [
     ],
     steps: [
       { do: 'goto', at: 'shop', text: 'Get something to eat at the Corner Shop.', hint: 'The gold route on the minimap shows the way. M opens the full map.' },
+      { do: 'talk', npc: 'leon', flag: 'lead:garage', text: 'Find Leon at the garage yard.' },
     ],
     reward: { cash: pounds(5), rep: 10 },
   },
   {
-    id: 'a1m2', group: 'Act 1: The Collision', order: 0.2, title: 'Sofa Rules', hero: 'jordan', requires: 'a1m1',
-    desc: "Leon's got a sofa, a few rules and, by the look of him, a problem.",
+    id: 'a1-favour', group: 'Act 1: The Collision', order: 0.2, title: 'One More Favour', hero: 'jordan', requires: 'a1m1',
+    desc: "Leon's supplier has stopped giving him credit. He needs a part, paid in cash, and someone to fetch it.",
     start: { at: 'leon' },
-    texts: [{ from: 'leon', when: 'available', body: "Eaten? Good. Yard's round the back by the Greenhouse. Blue shutter, can't miss it." }],
-    steps: [{ do: 'talk', npc: 'leon', text: 'Talk to Leon (E).' }],
-    reward: { cash: pounds(10), rep: 15 },
+    texts: [
+      { from: 'leon', when: 'available', body: "Morning, sleeping beauty. Come to the yard when you're up. Need a hand with something." },
+      { from: 'leon', when: 'pass', if: { helpedLeon: 'yes' }, body: "Supplier's back on side. Corsa's out Friday. Owe you one, proper." },
+      // Kept the change? Leon finds out (the consequence of decision 1, straight away)
+      { from: 'leon', when: 'pass', if: { helpedLeon: 'no', partPrice: ['70', '90'] }, body: 'Bumped into Kenny at the cash and carry. Says he did you a good price on that clutch. Funny, that.' },
+    ],
+    steps: [
+      { do: 'talk', npc: 'leon', flag: 'part:asked', text: 'Talk to Leon.' },
+      { do: 'car', carId: 'leon-hatchback', carName: "Leon's hatchback", spawn: { x: 86, z: 81, h: 1.57 }, colour: '#8A8F96', checkpoint: true, text: "Get in Leon's grey hatchback." },
+      { do: 'drive', at: { x: 449.4, z: 99.2, name: "Kenny's Motor Spares" }, r: 12, clean: "The police clocked Leon's hatchback. It isn't exactly legal.", text: "Drive to Kenny's Motor Spares on Adderley Street. Keep it clean: no police." },
+      { do: 'talk', npc: 'kenny', flag: 'part:bought', checkpoint: true, text: 'Buy the clutch kit from Kenny. Talk him down if you can.' },
+      { do: 'drive', at: { x: 84, z: 83, name: "Leon's yard" }, r: 10, clean: "The police clocked Leon's hatchback. It isn't exactly legal.", text: 'Take the part back to the yard. Still no police.' },
+      { do: 'talk', npc: 'leon', flag: 'leon:paid', text: 'Give Leon the part.' },
+    ],
+    reward: { cash: pounds(20), rep: 20 },
   },
   {
-    id: 'a1m3', group: 'Act 1: The Collision', order: 0.3, title: 'Day Shift', hero: 'jordan', requires: 'a1m2',
-    desc: "Leon says Aisha's café is always short-handed. Say hello, then have a word with Raymond on Gibb Street.",
+    // Interim until mission 3 (A Place to Sit) is rebuilt with Maya and the Custard Factory café
+    id: 'a1m3', group: 'Act 1: The Collision', order: 0.3, title: 'A Place to Sit', hero: 'jordan', requires: 'a1-favour',
+    desc: "Aisha's café is always short-handed. Say hello, then have a word with Raymond on Gibb Street.",
     start: { at: 'aisha' },
     texts: [
       { from: 'leon', when: 'available', body: "Aisha's café is always short-handed. Tell her I sent you. Then say hello to Raymond on Gibb Street, he'll talk your ear off." },
@@ -69,27 +86,6 @@ export const MISSIONS = [
       { do: 'talk', npc: 'raymond', text: 'Have a word with Raymond on Gibb Street.' },
     ],
     reward: { cash: pounds(15), rep: 20 },
-  },
-  {
-    id: 'a1m4', group: 'Act 1: The Collision', order: 0.4, title: 'Small Favour', hero: 'jordan', requires: 'a1m3',
-    desc: 'Leon wants a word. He has a favour to ask. Whatever you tell him, it will matter.',
-    start: { at: 'leon' },
-    texts: [{ from: 'leon', when: 'available', body: 'Need a word. Come to the yard when you can. Not on the phone.' }],
-    steps: [{ do: 'talk', npc: 'leon', flag: 'favour:decided', text: 'Hear Leon out.' }],
-    reward: { cash: pounds(10), rep: 15 },
-  },
-  {
-    id: 'a1m5', group: 'Act 1: The Collision', order: 0.5, title: 'The Night It Went Wrong', hero: 'jordan', requires: 'a1m4',
-    desc: 'The lock-up near the courier depot. Stand at the end of the lane and whistle if anyone turns up.',
-    start: { at: { x: 160, z: 62, name: 'Gibb Street' } },
-    texts: [{ from: 'leon', when: 'available', body: "Tonight. Meet me on Gibb Street and I'll walk you down. End of the lane by the lock-up, nine o'clock. Just watch." }],
-    steps: [
-      { do: 'goto', at: { x: 181, z: 70, name: 'the end of the lane' }, r: 3, text: 'Get to the end of the lane by the lock-up.', timer: 90000, hint: "Leon's friend moves the cash at nine. Don't be late." },
-      { do: 'wait', ms: 20000, checkpoint: true, text: 'Keep watch. Stay at the end of the lane.', stay: { at: { x: 181, z: 70 }, r: 9, text: 'You left your post.' } },
-      { do: 'talk', npc: 'nia', flag: 'money:missing', text: "It's gone quiet. Too quiet. Find out what happened." },
-    ],
-    reward: { cash: pounds(25), rep: 30 },
-    then: { chapter: 'ch2' },
   },
 ]
 

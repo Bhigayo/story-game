@@ -7,7 +7,9 @@ import { MISSIONS, availableFor, missionById, placeOf, startOf } from './mission
 /** Sends a mission's texts for one moment ('available', 'start', 'pass') through the game (v52). */
 function textsFor(p, m, when, game) {
   ;(m.texts ?? []).forEach((text, i) => {
-    if (text.when === when) game.text(p, `${m.id}:${when}:${i}`, { from: text.from, body: text.body, mission: when === 'available' ? m.id : null })
+    // `if: { decision: value or [values] }`: only sent when the story went that way (v53)
+    const fits = Object.entries(text.if ?? {}).every(([k, v]) => [v].flat().includes(p.story.decisions?.[k]))
+    if (text.when === when && fits) game.text(p, `${m.id}:${when}:${i}`, { from: text.from, body: text.body, mission: when === 'available' ? m.id : null })
   })
 }
 
@@ -94,6 +96,11 @@ function sceneOver(p, now, game) {
 function beginStep(p, run, m, now, game) {
   const step = m.steps[run.step]
   run.stepAt = now
+  // A car the mission provides (v53): parked and waiting, and the marker points at it
+  if (step.do === 'car' && step.spawn) {
+    const car = game.spawnCar(step.carId, step.spawn, step.colour)
+    run.carSpot = { x: car.x, z: car.z, name: step.carName ?? 'the car' }
+  }
   run.deadline = step.timer ? now + step.timer : 0
   if (step.checkpoint) run.checkpoint = run.step
   pushRun(p, game)
@@ -116,7 +123,7 @@ function stepDone(p, run, step, now, game) {
     case 'drive':
       return Boolean(p.vehicleId) && near(step.at, step.r ?? 7)
     case 'car':
-      if (!p.vehicleId) return false
+      if (!p.vehicleId || (step.carId && p.vehicleId !== step.carId)) return false
       run.carId = p.vehicleId
       return true
     case 'talk':
@@ -136,6 +143,7 @@ function failure(p, run, step, now, game) {
   if (now - run.stepAt < RETRY_GRACE_MS) return null
   if (run.deadline && now > run.deadline) return 'You ran out of time.'
   if (run.carId && game.carWrecked(run.carId)) return 'The car was wrecked.'
+  if (step.clean && p.heat > 0) return step.clean === true ? 'The police are onto you.' : step.clean
   if (step.stay) {
     const at = placeOf(step.stay.at)
     if (at && Math.hypot(p.x - at.x, p.z - at.z) > step.stay.r) return step.stay.text ?? 'You left the area.'
@@ -159,10 +167,18 @@ export function retryRun(p, now, game) {
   run.failed = null
   run.carId = null
   run.step = run.checkpoint
+  game.clearWanted(p) // a retry starts clean, as in GTA (v53)
   // Back to where the checkpoint step happens, if it has a place
   const step = m.steps[run.step]
-  const back = step.stay ? placeOf(step.stay.at) : run.step > 0 ? placeOf(m.steps[run.step - 1].at) : startOf(m)
+  const prev = run.step > 0 ? m.steps[run.step - 1] : null
+  const back = step.stay ? placeOf(step.stay.at) : prev ? placeOf(prev.at ?? prev.npc) : startOf(m)
   if (back) game.place(p, back)
+  // Past the step that gave you a car: it's parked back beside you, repaired (v53)
+  const given = m.steps.slice(0, run.step).find((s) => s.do === 'car' && s.spawn)
+  if (given && back) {
+    game.spawnCar(given.carId, { x: back.x + 3, z: back.z + 3, h: given.spawn.h }, given.colour)
+    run.carId = given.carId
+  }
   game.send(p, { t: 'mission', state: 'retry', id: m.id, title: m.title })
   beginStep(p, run, m, now, game)
 }
@@ -188,7 +204,7 @@ export function runView(p) {
   if (!run) return null
   const m = missionById(run.id)
   const step = m.steps[Math.min(run.step, m.steps.length - 1)]
-  const target = placeOf(step.at ?? step.npc ?? step.stay?.at ?? null)
+  const target = step.do === 'car' && run.carSpot ? run.carSpot : placeOf(step.at ?? step.npc ?? step.stay?.at ?? null)
   return {
     id: m.id,
     title: m.title,

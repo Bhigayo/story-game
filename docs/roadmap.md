@@ -186,6 +186,16 @@ keep a baseline copy, then take them out of the story game:
   around it: over-the-shoulder and wide shots, body language (talk, turn, sit, push), strong subtitles, mood
   from day/night and rain; recorded voice lines maybe later. Built after 16 (missions start and end them);
   the first real one is the intro to Act I mission 1 (Jordan at the coach station).
+17c. **Vertical slice, mission 2: One More Favour (done, v53).** Act 1 now follows the story bible: mission 1
+  (No Fixed Address) ends at Leon's sofa; mission 2 is Leon's clutch kit: he gives you £120 and his unregistered
+  grey hatchback (a mission car, parked for you), you drive to Kenny Doyle's parts place on Adderley Street
+  without getting a wanted level (fail and retry from a checkpoint, the car put back beside you, wanted cleared),
+  haggle (£120, £90 or £70), drive back, and **decision 1**: hand Leon the change (or add £50 of your own), or
+  keep it. Straight away: Leon's reaction, your cash, and his text (grateful, or "Kenny says he did you a good
+  price. Funny, that."). Stored as `decisions.helpedLeon` and `decisions.partPrice`. New in the engine: mission
+  cars (`car` step with `spawn`), `clean` (no wanted level), money in conversations (`cash` effect), texts that
+  depend on decisions (`if`). The old lock-up missions (Small Favour, The Night It Went Wrong) are out until
+  mission 6 is rebuilt; the café mission is a stand-in for mission 3.
 17. **Phone texts and contacts (done, v52).** Missions text you (`texts` in `server/missions.mjs`: when a mission
   opens, as it starts, or when you pass it); a text about an open mission has **Set GPS** to its marker. New texts
   pop up above the minimap with a buzz (click to read) and badge the phone; Messages has a conversation per person,

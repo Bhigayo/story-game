@@ -39,7 +39,7 @@ import { blocked } from './colliders.mjs'
 import { PEOPLE, addFleeing, pedSnapshot, tickPedestrians } from './pedestrians.mjs'
 import { ROAD_NODES, nearestNode, route } from './roads.mjs'
 import { JUNCTIONS, armFor, lightFor, signalStats, signalsMessage } from './signals.mjs'
-import { CAR, CRASHES, VEHICLES, cannotEnter, exitSpot, setInput, stepVehicle, vehicleById, vehicleSnapshot } from './vehicles.mjs'
+import { CAR, CRASHES, VEHICLES, cannotEnter, exitSpot, setInput, spawnCar, stepVehicle, vehicleById, vehicleSnapshot } from './vehicles.mjs'
 import { FAR_DESTINATIONS, STOPS, bookTrip, quote, surgeAt, travelSeconds, inBounds } from './transport.mjs'
 
 const PORT = Number(process.env.PORT) || 2567
@@ -122,6 +122,16 @@ const GAME = {
   send: (p, message) => p.send?.(message),
   talking: (p) => Boolean(p.dialogue),
   carWrecked: (id) => Boolean(vehicleById(id)?.wrecked),
+  spawnCar: (id, anchor, colour) => spawnCar(id, anchor, colour),
+  clearWanted: (p) => {
+    if (!(p.heat > 0)) return
+    p.heat = 0
+    p.arrestMs = 0
+    removeUnits(p)
+    p.wantedLevel = 0
+    p.wantedSearching = false
+    p.send({ t: 'wanted', level: 0, searching: false })
+  },
   missionsChanged: (p) => pushMissions(p),
   /** A text to this character's phone (once per key); it arrives with a buzz (v52). */
   text: (p, key, text) => {
@@ -322,11 +332,20 @@ wss.on('connection', (ws) => {
         player.z = num(msg.z, player.z)
         player.lastMove = Date.now()
       }
+      if (msg.cmd === 'teleport' && player.vehicleId) {
+        // dev: the car you're driving goes with you (v53, for testing driving steps)
+        const car = vehicleById(player.vehicleId)
+        if (car) {
+          car.x = player.x = num(msg.x, car.x)
+          car.z = player.z = num(msg.z, car.z)
+          car.speed = 0
+        }
+      }
       return
     }
 
     // While you are driving, only chat, driving and getting out are allowed. Your position is the car's.
-    if (player.vehicleId && !['chat', 'drive', 'exit', 'horn'].includes(msg.t)) return
+    if (player.vehicleId && !['chat', 'drive', 'exit', 'horn', 'missionRetry', 'missionQuit', 'sceneDone', 'textsRead'].includes(msg.t)) return
 
     if (msg.t === 'enter') {
       const vehicle = vehicleById(msg.vehicle)
@@ -442,6 +461,14 @@ wss.on('connection', (ws) => {
       }
       const result = choose(player.story, d, msg.i)
       if (!result) return
+      // Money changing hands in a conversation (v53): never more than you have
+      if (result.cash) {
+        const amount = Math.max(result.cash, -player.profile.balance)
+        player.profile.balance += amount
+        player.send({ t: 'notice', text: `${amount > 0 ? '+' : '−'}£${(Math.abs(amount) / 100).toFixed(2)}`, good: amount > 0 })
+        touch()
+        pushProfile(player)
+      }
       if (result.end) {
         player.dialogue = null
         player.send({ t: 'dialogueEnd' })
