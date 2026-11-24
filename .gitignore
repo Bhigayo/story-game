@@ -1,0 +1,25 @@
+# Dependencies and builds (never commit these: npm install recreates them)
+node_modules/
+dist/
+
+# Licence-unverified protagonist models (see CREDITS.md)
+public/models/real/
+
+# Old test models, not used by the game (about 62 MB). Listed by name on purpose:
+# Windows git ignores letter case, so a BritLife_* pattern would also hide the _clean models.
+public/models/BritLife_Character_Base_Female.glb
+public/models/BritLife_Character_Base_Male.glb
+public/models/BritLife_Male_Modifier_Test.glb
+public/models/BritLife_Male_Test.glb
+public/models/britlife_male_walkglb.glb
+
+# Live player saves from the local server (wallets, story progress, and their temp files)
+server/data/*.json
+server/data/*.tmp
+
+# Local copies of old file versions, and archived experiments: kept on this laptop only
+backups/
+archive/
+
+# Raw Mixamo characters/animations and downloaded sounds: licensed for use in the game, not for sharing as files
+assets-src/
